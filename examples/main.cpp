@@ -62,13 +62,16 @@ class net_plugin : public appbase::plugin<net_plugin>
 };
 
 
-
 int main( int argc, char** argv ) {
    try {
+      // 注册net_plugin
       appbase::app().register_plugin<net_plugin>();
+      // 初始化，会首先调用 net_plugin 的 initialize
       if( !appbase::app().initialize( argc, argv ) )
          return -1;
+      // 启动，会首先调用 net_plugin 的 initialize的startup
       appbase::app().startup();
+      // exec函数中会注册进程退出相关的信号的监听，来保证进程的优雅退出
       appbase::app().exec();
    } catch ( const boost::exception& e ) {
       std::cerr << boost::diagnostic_information(e) << "\n";

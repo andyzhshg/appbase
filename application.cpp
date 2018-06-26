@@ -57,6 +57,7 @@ bfs::path application::get_logging_conf() const {
   return my->_logging_conf;
 }
 
+// 启动app，首先启动插件
 void application::startup() {
    try {
       for (auto plugin : initialized_plugins)
@@ -67,6 +68,7 @@ void application::startup() {
    }
 }
 
+// 全局单例
 application& application::instance() {
    static application _app;
    return _app;
@@ -74,8 +76,10 @@ application& application::instance() {
 application& app() { return application::instance(); }
 
 
+// 通过boost::program_options构建配置选项
 void application::set_program_options()
 {
+   // 首先为所有的插件配置选项
    for(auto& plug : plugins) {
       boost::program_options::options_description plugin_cli_opts("Command Line Options for " + plug.second->name());
       boost::program_options::options_description plugin_cfg_opts("Config Options for " + plug.second->name());
@@ -108,6 +112,7 @@ void application::set_program_options()
 }
 
 bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*> autostart_plugins) {
+   // 设置程序配置项，该函数中会首先设置所有插件的配置项
    set_program_options();
 
    bpo::variables_map options;
@@ -123,11 +128,13 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
       return false;
    }
 
+   // 打印默认配置项
    if( options.count( "print-default-config" ) ) {
       print_default_config(cout);
       return false;
    }
 
+   // 数据目录
    if( options.count( "data-dir" ) ) {
       // Workaround for 10+ year old Boost defect
       // See https://svn.boost.org/trac10/ticket/8535
@@ -140,6 +147,7 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
       my->_data_dir = data_dir;
    }
 
+   // 配置文件目录
    if( options.count( "config-dir" ) ) {
       auto workaround = options["config-dir"].as<std::string>();
       bfs::path config_dir = workaround;
@@ -148,17 +156,19 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
       my->_config_dir = config_dir;
    }
 
+   // 日志配置
    auto workaround = options["logconf"].as<std::string>();
    bfs::path logconf = workaround;
    if( logconf.is_relative() )
       logconf = my->_config_dir / logconf;
    my->_logging_conf = logconf;
 
+   // 如果参数指定了config，则根据指定的config文件读取配置
    workaround = options["config"].as<std::string>();
    bfs::path config_file_name = workaround;
    if( config_file_name.is_relative() )
       config_file_name = my->_config_dir / config_file_name;
-
+   // 如果找不到config指定的文件，则在配置文件夹下查找config.ini读取配置
    if(!bfs::exists(config_file_name)) {
       if(config_file_name.compare(my->_config_dir / "config.ini") != 0)
       {
@@ -167,10 +177,10 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
       }
       write_default_config(config_file_name);
    }
-
+   // 读取配置文件的配置
    bpo::store(bpo::parse_config_file<char>(config_file_name.make_preferred().string().c_str(),
                                            my->_cfg_options, true), options);
-
+   // 处理插件配置
    if(options.count("plugin") > 0)
    {
       auto plugins = options.at("plugin").as<std::vector<std::string>>();
@@ -196,6 +206,7 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
    return true;
 }
 
+// 程序退出，首先初退出插件，退出的顺序与注册的顺序相反
 void application::shutdown() {
    for(auto ritr = running_plugins.rbegin();
        ritr != running_plugins.rend(); ++ritr) {
@@ -216,6 +227,7 @@ void application::quit() {
 }
 
 void application::exec() {
+   // 监听信号 SIGINT / SIGTERM / SIGPIPE
    std::shared_ptr<boost::asio::signal_set> sigint_set(new boost::asio::signal_set(*io_serv, SIGINT));
    sigint_set->async_wait([sigint_set,this](const boost::system::error_code& err, int num) {
      quit();
@@ -239,6 +251,7 @@ void application::exec() {
    shutdown(); /// perform synchronous shutdown
 }
 
+// 输出默认配置
 void application::write_default_config(const bfs::path& cfg_file) {
    if(!bfs::exists(cfg_file.parent_path()))
       bfs::create_directories(cfg_file.parent_path());
@@ -248,6 +261,7 @@ void application::write_default_config(const bfs::path& cfg_file) {
    out_cfg.close();
 }
 
+// 打印默认配置
 void application::print_default_config(std::ostream& os) {
    std::map<std::string, std::string> option_to_plug;
    for(auto& plug : plugins) {
